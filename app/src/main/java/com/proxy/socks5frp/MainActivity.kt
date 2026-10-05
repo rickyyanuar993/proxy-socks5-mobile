@@ -12,12 +12,15 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.NestedScrollView
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import java.net.NetworkInterface
@@ -43,15 +46,30 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvDebugLogs: TextView
     private lateinit var btnCopyLogs: TextView
     private lateinit var btnClearLogs: TextView
+    private lateinit var scrollDebugVertical: NestedScrollView
+    private lateinit var scrollDebugHorizontal: HorizontalScrollView
+
+    private var isUserTouchingLogs = false
+    private var lastLogText: String = ""
 
     private val logHandler = Handler(Looper.getMainLooper())
     private val logRunnable = object : Runnable {
         override fun run() {
-            if (switchDebug.isChecked) {
+            if (switchDebug.isChecked && !isUserTouchingLogs) {
                 try {
                     val logs = proxycore.Proxycore.getRecentLogs()
-                    if (tvDebugLogs.text != logs) {
+                    if (logs != lastLogText) {
+                        lastLogText = logs
+                        val curX = scrollDebugHorizontal.scrollX
+                        val curY = scrollDebugVertical.scrollY
                         tvDebugLogs.text = logs
+
+                        scrollDebugHorizontal.post {
+                            scrollDebugHorizontal.scrollTo(curX, 0)
+                        }
+                        scrollDebugVertical.post {
+                            scrollDebugVertical.scrollTo(0, curY)
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -97,9 +115,30 @@ class MainActivity : AppCompatActivity() {
         btnClearLogs.setOnClickListener {
             try {
                 proxycore.Proxycore.clearLogs()
+                lastLogText = ""
                 tvDebugLogs.text = "Logs cleared."
+                scrollDebugHorizontal.scrollTo(0, 0)
+                scrollDebugVertical.scrollTo(0, 0)
             } catch (_: Exception) {}
         }
+
+        // Cegah konflik sentuhan dengan root ScrollView dan cegah flicker saat scrolling
+        val logTouchListener = View.OnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    isUserTouchingLogs = true
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    isUserTouchingLogs = false
+                    v.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+            }
+            false
+        }
+        scrollDebugVertical.setOnTouchListener(logTouchListener)
+        scrollDebugHorizontal.setOnTouchListener(logTouchListener)
+        tvDebugLogs.setOnTouchListener(logTouchListener)
 
         logHandler.post(logRunnable)
         checkNotificationPermission()
@@ -147,6 +186,8 @@ class MainActivity : AppCompatActivity() {
         tvDebugLogs = findViewById(R.id.tvDebugLogs)
         btnCopyLogs = findViewById(R.id.btnCopyLogs)
         btnClearLogs = findViewById(R.id.btnClearLogs)
+        scrollDebugVertical = findViewById(R.id.scrollDebugVertical)
+        scrollDebugHorizontal = findViewById(R.id.scrollDebugHorizontal)
     }
 
     private fun startProxyService() {

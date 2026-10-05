@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootScrollView"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0F172A"
+    android:descendantFocusability="blocksDescendants"
     android:fillViewport="true">
 
     <LinearLayout
@@ -368,16 +370,20 @@
                             android:textStyle="bold" />
                     </LinearLayout>
 
-                    <ScrollView
+                    <androidx.core.widget.NestedScrollView
+                        android:id="@+id/scrollDebugVertical"
                         android:layout_width="match_parent"
                         android:layout_height="250dp"
                         android:layout_marginTop="6dp"
                         android:background="#0A0F1D"
+                        android:nestedScrollingEnabled="true"
                         android:padding="8dp">
 
                         <HorizontalScrollView
+                            android:id="@+id/scrollDebugHorizontal"
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content">
+                            android:layout_height="wrap_content"
+                            android:nestedScrollingEnabled="true">
 
                             <TextView
                                 android:id="@+id/tvDebugLogs"
@@ -390,7 +396,7 @@
                                 android:textIsSelectable="true"
                                 android:textSize="11sp" />
                         </HorizontalScrollView>
-                    </ScrollView>
+                    </androidx.core.widget.NestedScrollView>
                 </LinearLayout>
 
             </LinearLayout>
@@ -407,4 +413,4 @@
             android:textSize="12sp" />
 
     </LinearLayout>
-</ScrollView>
+</androidx.core.widget.NestedScrollView>
