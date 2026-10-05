@@ -382,8 +382,8 @@
                             android:textStyle="bold" />
                     </LinearLayout>
 
-                    <ScrollView
-                        android:id="@+id/scrollDebugVertical"
+                    <HorizontalScrollView
+                        android:id="@+id/scrollDebugHorizontal"
                         android:layout_width="match_parent"
                         android:layout_height="250dp"
                         android:layout_marginTop="6dp"
@@ -391,10 +391,10 @@
                         android:fillViewport="true"
                         android:padding="8dp">
 
-                        <HorizontalScrollView
-                            android:id="@+id/scrollDebugHorizontal"
+                        <ScrollView
+                            android:id="@+id/scrollDebugVertical"
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
+                            android:layout_height="match_parent"
                             android:fillViewport="true">
 
                             <TextView
@@ -405,8 +405,8 @@
                                 android:text="Ready. Start proxy to see live logs..."
                                 android:textColor="#34D399"
                                 android:textSize="11sp" />
-                        </HorizontalScrollView>
-                    </ScrollView>
+                        </ScrollView>
+                    </HorizontalScrollView>
                 </LinearLayout>
 
             </LinearLayout>
