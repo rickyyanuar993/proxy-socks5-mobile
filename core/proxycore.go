@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -104,6 +105,39 @@ func ClearLogs() {
 	logMu.Lock()
 	defer logMu.Unlock()
 	logList = nil
+}
+
+func resolveToIPv4(host string, port int) string {
+	// 1. Cek apakah alamat adalah NAT64 IPv6 (64:ff9b::/96)
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if v4 := ip.To4(); v4 != nil {
+			return net.JoinHostPort(v4.String(), strconv.Itoa(port))
+		}
+		// Cek NAT64 prefix: 64:ff9b:: (12 byte pertama = 00 64 ff 9b 00 00 00 00 00 00 00 00)
+		if len(ip) == 16 &&
+			ip[0] == 0x00 && ip[1] == 0x64 && ip[2] == 0xff && ip[3] == 0x9b &&
+			ip[4] == 0 && ip[5] == 0 && ip[6] == 0 && ip[7] == 0 &&
+			ip[8] == 0 && ip[9] == 0 && ip[10] == 0 && ip[11] == 0 {
+			v4 := net.IPv4(ip[12], ip[13], ip[14], ip[15]).String()
+			AddLog(fmt.Sprintf("[IPv4 Focus] NAT64 %s di-unwrap -> IPv4 %s", host, v4))
+			return net.JoinHostPort(v4, strconv.Itoa(port))
+		}
+		return net.JoinHostPort(host, strconv.Itoa(port))
+	}
+
+	// 2. Jika Domain (misal www.growtopia2.com):
+	// Prioritaskan resolve ke IPv4 (A record)
+	ips, err := net.LookupIP(host)
+	if err == nil {
+		for _, resolvedIP := range ips {
+			if v4 := resolvedIP.To4(); v4 != nil {
+				return net.JoinHostPort(v4.String(), strconv.Itoa(port))
+			}
+		}
+	}
+
+	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
 type Server struct {
@@ -313,9 +347,13 @@ func (s *Server) handleClient(conn net.Conn) {
 		return
 	}
 
-	// Handle TCP CONNECT
-	targetAddr := fmt.Sprintf("%s:%d", host, port)
-	remote, err := net.DialTimeout("tcp", targetAddr, 10*time.Second)
+	// Handle TCP CONNECT (Fokus IPv4 Only)
+	targetAddr := resolveToIPv4(host, port)
+	remote, err := net.DialTimeout("tcp4", targetAddr, 10*time.Second)
+	if err != nil {
+		// Fallback ke "tcp" jika interface seluler memerlukan auto-resolution
+		remote, err = net.DialTimeout("tcp", targetAddr, 10*time.Second)
+	}
 	if err != nil {
 		AddLog(fmt.Sprintf("[SOCKS5 TCP] Failed connect %s: %v", targetAddr, err))
 		_, _ = conn.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
@@ -435,7 +473,14 @@ func (s *Server) udpListenLoop() {
 			if idx+16 > n {
 				continue
 			}
-			dstIP = net.IP(buf[idx : idx+16]).String()
+			rawIP := net.IP(buf[idx : idx+16])
+			if rawIP[0] == 0x00 && rawIP[1] == 0x64 && rawIP[2] == 0xff && rawIP[3] == 0x9b &&
+				rawIP[4] == 0 && rawIP[5] == 0 && rawIP[6] == 0 && rawIP[7] == 0 &&
+				rawIP[8] == 0 && rawIP[9] == 0 && rawIP[10] == 0 && rawIP[11] == 0 {
+				dstIP = net.IPv4(rawIP[12], rawIP[13], rawIP[14], rawIP[15]).String()
+			} else {
+				dstIP = rawIP.String()
+			}
 			idx += 16
 		default:
 			continue
@@ -523,8 +568,11 @@ func (s *Server) udpListenLoop() {
 			}
 		}
 
-		targetAddrStr := fmt.Sprintf("%s:%d", dstIP, dstPort)
-		rAddr, err := net.ResolveUDPAddr("udp", targetAddrStr)
+		targetAddrStr := resolveToIPv4(dstIP, dstPort)
+		rAddr, err := net.ResolveUDPAddr("udp4", targetAddrStr)
+		if err != nil {
+			rAddr, err = net.ResolveUDPAddr("udp", targetAddrStr)
+		}
 		if err == nil {
 			_, _ = sess.outConn.WriteTo(payload, rAddr)
 			AddLog(fmt.Sprintf("[SOCKS5 UDP Relay] %d bytes from %v -> %s", len(payload), clientAddr, targetAddrStr))
