@@ -77,6 +77,16 @@ class MainActivity : AppCompatActivity() {
             layoutDebugLogs.visibility = if (isChecked) android.view.View.VISIBLE else android.view.View.GONE
         }
 
+        btnCopyLogs.setOnClickListener {
+            val logs = tvDebugLogs.text.toString()
+            if (logs.isNotEmpty()) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Socks5 FRP Debug Logs", logs)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         btnClearLogs.setOnClickListener {
             try {
                 proxycore.Proxycore.clearLogs()
@@ -109,6 +119,7 @@ class MainActivity : AppCompatActivity() {
         switchDebug = findViewById(R.id.switchDebug)
         layoutDebugLogs = findViewById(R.id.layoutDebugLogs)
         tvDebugLogs = findViewById(R.id.tvDebugLogs)
+        btnCopyLogs = findViewById(R.id.btnCopyLogs)
         btnClearLogs = findViewById(R.id.btnClearLogs)
     }
 

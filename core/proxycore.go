@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/fatedier/frp/client"
 	v1 "github.com/fatedier/frp/pkg/config/v1"
+	frpLog "github.com/fatedier/frp/pkg/util/log"
 	"github.com/fatedier/frp/pkg/config/v1/validation"
+	golibLog "github.com/fatedier/golib/log"
 )
 
 var (
@@ -27,13 +30,28 @@ var (
 	logList []string
 )
 
+type frpLogBridge struct{}
+
+func (f *frpLogBridge) Write(p []byte) (n int, err error) {
+	line := strings.TrimSpace(string(p))
+	if line != "" {
+		AddLog("[FRP] " + line)
+	}
+	return len(p), nil
+}
+
+func init() {
+	// Redirect all internal FRP logs to our real-time debug log buffer
+	frpLog.Logger = golibLog.New(golibLog.WithOutput(&frpLogBridge{}), golibLog.WithLevel(golibLog.InfoLevel))
+}
+
 func AddLog(msg string) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	t := time.Now().Format("15:04:05")
 	entry := fmt.Sprintf("[%s] %s", t, msg)
 	logList = append(logList, entry)
-	if len(logList) > 200 {
+	if len(logList) > 300 {
 		logList = logList[1:]
 	}
 }
@@ -269,6 +287,7 @@ func (s *Server) handleClient(conn net.Conn) {
 	targetAddr := fmt.Sprintf("%s:%d", host, port)
 	remote, err := net.DialTimeout("tcp", targetAddr, 10*time.Second)
 	if err != nil {
+		AddLog(fmt.Sprintf("[SOCKS5 TCP] Failed connect %s: %v", targetAddr, err))
 		_, _ = conn.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}
@@ -278,6 +297,8 @@ func (s *Server) handleClient(conn net.Conn) {
 		_ = tcpRemote.SetNoDelay(true)
 		_ = tcpRemote.SetKeepAlive(true)
 	}
+
+	AddLog(fmt.Sprintf("[SOCKS5 TCP] Connected to %s", targetAddr))
 
 	// SOCKS5 reply Success
 	_, _ = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
@@ -440,6 +461,7 @@ func (s *Server) udpListenLoop() {
 					packed := packUDPHeader(respIP, udpAddr.Port, tBuf[:nt])
 					if packed != nil {
 						_, _ = s.udpListener.WriteTo(packed, session.clientAddr)
+						AddLog(fmt.Sprintf("[SOCKS5 UDP Response] %d bytes from %s:%d -> client %v", nt, respIP, udpAddr.Port, session.clientAddr))
 					}
 				}
 				session.close()
@@ -466,6 +488,7 @@ func (s *Server) udpListenLoop() {
 		if dstPort == 53 {
 			sess.lastTargetDNS = dstIP
 			if dstIP == "1.1.1.1" || dstIP == "1.0.0.1" || dstIP == "9.9.9.9" || dstIP == "208.67.222.222" {
+				AddLog(fmt.Sprintf("[SOCKS5 UDP DNS] Smart DNS routing %s:53 -> 8.8.8.8:53", dstIP))
 				dstIP = "8.8.8.8"
 			}
 		}
@@ -474,6 +497,7 @@ func (s *Server) udpListenLoop() {
 		rAddr, err := net.ResolveUDPAddr("udp", targetAddrStr)
 		if err == nil {
 			_, _ = sess.outConn.WriteTo(payload, rAddr)
+			AddLog(fmt.Sprintf("[SOCKS5 UDP Relay] %d bytes from %v -> %s", len(payload), clientAddr, targetAddrStr))
 		}
 	}
 }
