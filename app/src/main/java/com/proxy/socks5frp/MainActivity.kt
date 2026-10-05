@@ -102,11 +102,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         logHandler.post(logRunnable)
+        checkNotificationPermission()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateUIState()
     }
 
     override fun onDestroy() {
         logHandler.removeCallbacks(logRunnable)
         super.onDestroy()
+    }
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    101
+                )
+            }
+        }
     }
 
     private fun initViews() {

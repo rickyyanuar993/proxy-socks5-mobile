@@ -55,16 +55,40 @@ class ProxyService : Service() {
             return START_NOT_STICKY
         }
 
-        val localPort = intent?.getIntExtra(EXTRA_LOCAL_PORT, 10808) ?: 10808
-        val serverAddr = intent?.getStringExtra(EXTRA_SERVER_ADDR) ?: ""
-        val serverPort = intent?.getIntExtra(EXTRA_SERVER_PORT, 7000) ?: 7000
-        val token = intent?.getStringExtra(EXTRA_TOKEN) ?: ""
-        val remotePort = intent?.getIntExtra(EXTRA_REMOTE_PORT, 10001) ?: 10001
-        val socksUser = intent?.getStringExtra(EXTRA_SOCKS_USER) ?: ""
-        val socksPass = intent?.getStringExtra(EXTRA_SOCKS_PASS) ?: ""
+        val prefs = getSharedPreferences("proxy_settings", Context.MODE_PRIVATE)
+        val localPort = intent?.getIntExtra(EXTRA_LOCAL_PORT, -1).let {
+            if (it == null || it <= 0) prefs.getString("local_port", "10808")?.toIntOrNull() ?: 10808 else it
+        }
+        val serverAddr = intent?.getStringExtra(EXTRA_SERVER_ADDR).let {
+            if (it.isNullOrEmpty()) prefs.getString("server_addr", "") ?: "" else it
+        }
+        val serverPort = intent?.getIntExtra(EXTRA_SERVER_PORT, -1).let {
+            if (it == null || it <= 0) prefs.getString("server_port", "7000")?.toIntOrNull() ?: 7000 else it
+        }
+        val token = intent?.getStringExtra(EXTRA_TOKEN).let {
+            if (it.isNullOrEmpty()) prefs.getString("token", "") ?: "" else it
+        }
+        val remotePort = intent?.getIntExtra(EXTRA_REMOTE_PORT, -1).let {
+            if (it == null || it <= 0) prefs.getString("remote_port", "10001")?.toIntOrNull() ?: 10001 else it
+        }
+        val socksUser = intent?.getStringExtra(EXTRA_SOCKS_USER).let {
+            if (it.isNullOrEmpty()) prefs.getString("socks_user", "") ?: "" else it
+        }
+        val socksPass = intent?.getStringExtra(EXTRA_SOCKS_PASS).let {
+            if (it.isNullOrEmpty()) prefs.getString("socks_pass", "") ?: "" else it
+        }
 
-        val notification = createNotification("Proxy running on VPS:$remotePort (Local:$localPort)")
-        startForeground(NOTIFICATION_ID, notification)
+        val displayInfo = if (serverAddr.isNotEmpty()) "VPS: $serverAddr:$remotePort | Local: $localPort" else "Local Port: $localPort"
+        val notification = createNotification(displayInfo)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         // Jalankan SOCKS5 + FRP di Go Core
         Thread {
@@ -137,18 +161,34 @@ class ProxyService : Service() {
     }
 
     private fun createNotification(content: String): Notification {
-        val intent = Intent(this, MainActivity::class.java)
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val stopIntent = Intent(this, ProxyService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 1, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("SOCKS5 + FRP Active")
+            .setContentTitle("🟢 SOCKS5 Proxy & FRP Tunnel Aktif")
             .setContentText(content)
+            .setSubText("Running in Background")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Proxy", stopPendingIntent)
             .build()
     }
 
