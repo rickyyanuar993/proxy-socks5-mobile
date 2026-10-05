@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '>=1.24'
           cache-dependency-path: core/go.sum
 
       - name: Set up JDK 17
@@ -36,6 +36,7 @@ jobs:
       - name: Build Go Mobile AAR Library
         working-directory: core
         run: |
+          go get -tool golang.org/x/mobile/cmd/gobind
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
