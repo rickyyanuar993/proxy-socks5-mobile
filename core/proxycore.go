@@ -37,8 +37,9 @@ type Server struct {
 type udpSession struct {
 	clientAddr net.Addr
 	outConn    net.PacketConn
-	lastActive int64
-	active     int32
+	lastActive    int64
+	active        int32
+	lastTargetDNS string
 }
 
 func (s *udpSession) close() {
@@ -383,7 +384,13 @@ func (s *Server) udpListenLoop() {
 						continue
 					}
 
-					packed := packUDPHeader(udpAddr.IP.String(), udpAddr.Port, tBuf[:nt])
+					respIP := udpAddr.IP.String()
+					// Jika IP tadi di-fallback dari 1.1.1.1 ke 8.8.8.8, kembalikan 1.1.1.1 agar client (Brook) tidak menganggap 'invalid answer'
+					if udpAddr.Port == 53 && session.lastTargetDNS != "" {
+						respIP = session.lastTargetDNS
+					}
+
+					packed := packUDPHeader(respIP, udpAddr.Port, tBuf[:nt])
 					if packed != nil {
 						_, _ = s.udpListener.WriteTo(packed, session.clientAddr)
 					}
@@ -406,6 +413,16 @@ func (s *Server) udpListenLoop() {
 		}
 
 		atomic.StoreInt64(&sess.lastActive, time.Now().Unix())
+
+		// Jika klien (seperti Brook) mencoba query ke DNS yang diblokir/rto oleh ISP lokal (seperti 1.1.1.1 / 9.9.9.9),
+		// secara cerdas forward ke Google DNS (8.8.8.8) yang terbukti tembus dan simpan IP aslinya
+		if dstPort == 53 {
+			sess.lastTargetDNS = dstIP
+			if dstIP == "1.1.1.1" || dstIP == "1.0.0.1" || dstIP == "9.9.9.9" || dstIP == "208.67.222.222" {
+				dstIP = "8.8.8.8"
+			}
+		}
+
 		targetAddrStr := fmt.Sprintf("%s:%d", dstIP, dstPort)
 		rAddr, err := net.ResolveUDPAddr("udp", targetAddrStr)
 		if err == nil {
