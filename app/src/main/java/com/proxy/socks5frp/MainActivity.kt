@@ -29,6 +29,7 @@ import java.util.Collections
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var rootScrollView: ScrollView
     private lateinit var tvStatus: TextView
     private lateinit var tvDeviceIP: TextView
     private lateinit var btnToggle: Button
@@ -71,10 +72,11 @@ class MainActivity : AppCompatActivity() {
                         val curX = scrollDebugHorizontal.scrollX
                         val curY = scrollDebugVertical.scrollY
 
-                        // Hitung apakah user berada di dekat bagian paling bawah (toleransi 80px)
+                        // Hitung apakah user berada di dekat bagian paling bawah (toleransi 100px)
                         val childHeight = scrollDebugVertical.getChildAt(0)?.height ?: 0
-                        val isAtBottom = (childHeight <= scrollDebugVertical.height) ||
-                                ((childHeight - (scrollDebugVertical.height + curY)) <= 80)
+                        val viewHeight = scrollDebugVertical.height
+                        val isAtBottom = (viewHeight == 0) || (childHeight <= viewHeight) ||
+                                ((childHeight - (viewHeight + curY)) <= 100)
 
                         tvDebugLogs.text = logs
 
@@ -169,25 +171,27 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: Exception) {}
             }
 
-            // Cegah konflik sentuhan dengan root ScrollView dan cegah flicker saat scrolling
-            val logTouchListener = View.OnTouchListener { v, event ->
+            // Cegah root ScrollView membajak sentuhan saat berinteraksi dengan log,
+            // namun biarkan scrollDebugVertical & scrollDebugHorizontal bebas meng-intercept gestur scroll vertikal & horizontal
+            val logTouchListener = View.OnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                         isUserTouchingLogs = true
                         logHandler.removeCallbacks(resetTouchRunnable)
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        rootScrollView.requestDisallowInterceptTouchEvent(true)
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         // Tunda 2.5 detik agar momentum fling selesai dan teks tetap diam saat dibaca
                         logHandler.removeCallbacks(resetTouchRunnable)
                         logHandler.postDelayed(resetTouchRunnable, 2500)
-                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                        rootScrollView.requestDisallowInterceptTouchEvent(false)
                     }
                 }
                 false
             }
             scrollDebugVertical.setOnTouchListener(logTouchListener)
             scrollDebugHorizontal.setOnTouchListener(logTouchListener)
+            tvDebugLogs.setOnTouchListener(logTouchListener)
 
             logHandler.post(logRunnable)
             checkNotificationPermission()
@@ -223,6 +227,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initViews() {
+        rootScrollView = findViewById(R.id.rootScrollView)
         tvStatus = findViewById(R.id.tvStatus)
         tvDeviceIP = findViewById(R.id.tvDeviceIP)
         btnToggle = findViewById(R.id.btnToggle)
