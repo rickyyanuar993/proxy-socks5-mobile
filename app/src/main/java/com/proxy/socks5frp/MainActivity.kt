@@ -32,6 +32,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etSocksUser: TextInputEditText
     private lateinit var etSocksPass: TextInputEditText
 
+    private lateinit var switchDebug: com.google.android.material.switchmaterial.SwitchMaterial
+    private lateinit var layoutDebugLogs: android.view.View
+    private lateinit var tvDebugLogs: TextView
+    private lateinit var btnClearLogs: TextView
+
+    private val logHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val logRunnable = object : Runnable {
+        override fun run() {
+            if (switchDebug.isChecked) {
+                try {
+                    val logs = proxycore.Proxycore.getRecentLogs()
+                    if (tvDebugLogs.text != logs) {
+                        tvDebugLogs.text = logs
+                    }
+                } catch (_: Exception) {}
+            }
+            logHandler.postDelayed(this, 1000)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -52,6 +72,24 @@ class MainActivity : AppCompatActivity() {
         btnBatteryOpt.setOnClickListener {
             requestBatteryOptimizationExemption()
         }
+
+        switchDebug.setOnCheckedChangeListener { _, isChecked ->
+            layoutDebugLogs.visibility = if (isChecked) android.view.View.VISIBLE else android.view.View.GONE
+        }
+
+        btnClearLogs.setOnClickListener {
+            try {
+                proxycore.Proxycore.clearLogs()
+                tvDebugLogs.text = "Logs cleared."
+            } catch (_: Exception) {}
+        }
+
+        logHandler.post(logRunnable)
+    }
+
+    override fun onDestroy() {
+        logHandler.removeCallbacks(logRunnable)
+        super.onDestroy()
     }
 
     private fun initViews() {
@@ -67,6 +105,11 @@ class MainActivity : AppCompatActivity() {
         etLocalPort = findViewById(R.id.etLocalPort)
         etSocksUser = findViewById(R.id.etSocksUser)
         etSocksPass = findViewById(R.id.etSocksPass)
+
+        switchDebug = findViewById(R.id.switchDebug)
+        layoutDebugLogs = findViewById(R.id.layoutDebugLogs)
+        tvDebugLogs = findViewById(R.id.tvDebugLogs)
+        btnClearLogs = findViewById(R.id.btnClearLogs)
     }
 
     private fun startProxyService() {

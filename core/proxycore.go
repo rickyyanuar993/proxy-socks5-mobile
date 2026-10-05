@@ -22,7 +22,41 @@ var (
 	frpService  *client.Service
 	cancelFrp   context.CancelFunc
 	isRunning   bool
+
+	logMu   sync.Mutex
+	logList []string
 )
+
+func AddLog(msg string) {
+	logMu.Lock()
+	defer logMu.Unlock()
+	t := time.Now().Format("15:04:05")
+	entry := fmt.Sprintf("[%s] %s", t, msg)
+	logList = append(logList, entry)
+	if len(logList) > 200 {
+		logList = logList[1:]
+	}
+}
+
+// GetRecentLogs returns the collected debug logs joined by newline
+func GetRecentLogs() string {
+	logMu.Lock()
+	defer logMu.Unlock()
+	if len(logList) == 0 {
+		return "No logs yet..."
+	}
+	res := ""
+	for _, l := range logList {
+		res += l + "\n"
+	}
+	return res
+}
+
+func ClearLogs() {
+	logMu.Lock()
+	defer logMu.Unlock()
+	logList = nil
+}
 
 type Server struct {
 	listenPort  int
@@ -472,9 +506,13 @@ func StartServer(localPort int, serverAddr string, serverPort int, token string,
 	}
 	socksServer = s
 
+	AddLog(fmt.Sprintf("SOCKS5 Server started on 0.0.0.0:%d (TCP+UDP)", localPort))
+
 	// 2. Inisialisasi FRP Client (Hanya jika serverAddr diisi)
 	if serverAddr != "" && remotePort > 0 {
+		AddLog(fmt.Sprintf("Initiating FRP tunnel to VPS %s:%d -> RemotePort %d", serverAddr, serverPort, remotePort))
 		common := &v1.ClientCommonConfig{}
+		common.Complete()
 		common.ServerAddr = serverAddr
 		common.ServerPort = serverPort
 		if token != "" {
@@ -491,6 +529,7 @@ func StartServer(localPort int, serverAddr string, serverPort int, token string,
 			},
 			RemotePort: remotePort,
 		}
+		tcpProxy.Complete("")
 
 		udpProxy := &v1.UDPProxyConfig{
 			ProxyBaseConfig: v1.ProxyBaseConfig{
@@ -501,23 +540,39 @@ func StartServer(localPort int, serverAddr string, serverPort int, token string,
 			},
 			RemotePort: remotePort,
 		}
+		udpProxy.Complete("")
 
 		proxyCfgs := []v1.ProxyConfigurer{tcpProxy, udpProxy}
-		_, err := validation.ValidateAllClientConfig(common, proxyCfgs, nil)
-		if err == nil {
+		warning, err := validation.ValidateAllClientConfig(common, proxyCfgs, nil)
+		if err != nil {
+			AddLog(fmt.Sprintf("FRP Config validation error: %v", err))
+		} else {
+			if warning != nil {
+				AddLog(fmt.Sprintf("FRP Config warning: %v", warning))
+			}
 			frpSvr, err := client.NewService(client.ServiceOptions{
 				Common:    common,
 				ProxyCfgs: proxyCfgs,
 			})
-			if err == nil {
+			if err != nil {
+				AddLog(fmt.Sprintf("FRP NewService error: %v", err))
+			} else {
 				frpService = frpSvr
 				ctx, cancel := context.WithCancel(context.Background())
 				cancelFrp = cancel
 				go func() {
-					_ = frpService.Run(ctx)
+					AddLog("FRP Client service is running in background...")
+					runErr := frpService.Run(ctx)
+					if runErr != nil {
+						AddLog(fmt.Sprintf("FRP Service exited: %v", runErr))
+					} else {
+						AddLog("FRP Service closed normally.")
+					}
 				}()
 			}
 		}
+	} else {
+		AddLog("FRP Tunnel is disabled (no VPS address specified). SOCKS5 local only.")
 	}
 
 	isRunning = true
@@ -545,6 +600,7 @@ func StopServer() string {
 		socksServer = nil
 	}
 
+	AddLog("Proxy & FRP stopped cleanly.")
 	isRunning = false
 	return "OK"
 }
