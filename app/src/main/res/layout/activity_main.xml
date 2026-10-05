@@ -342,7 +342,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Real-Time Engine & Tunnel Logs:"
+                            android:text="Real-Time Engine &amp; Tunnel Logs:"
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
 
