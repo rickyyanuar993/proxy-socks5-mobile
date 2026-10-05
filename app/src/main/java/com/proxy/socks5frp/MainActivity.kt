@@ -1,18 +1,24 @@
 package com.proxy.socks5frp
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import java.net.NetworkInterface
 import java.util.Collections
@@ -32,12 +38,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etSocksUser: TextInputEditText
     private lateinit var etSocksPass: TextInputEditText
 
-    private lateinit var switchDebug: com.google.android.material.switchmaterial.SwitchMaterial
-    private lateinit var layoutDebugLogs: android.view.View
+    private lateinit var switchDebug: SwitchMaterial
+    private lateinit var layoutDebugLogs: View
     private lateinit var tvDebugLogs: TextView
+    private lateinit var btnCopyLogs: TextView
     private lateinit var btnClearLogs: TextView
 
-    private val logHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val logHandler = Handler(Looper.getMainLooper())
     private val logRunnable = object : Runnable {
         override fun run() {
             if (switchDebug.isChecked) {
