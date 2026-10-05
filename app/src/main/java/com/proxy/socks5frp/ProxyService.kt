@@ -26,13 +26,15 @@ class ProxyService : Service() {
     private val watchdogRunnable = object : Runnable {
         override fun run() {
             if (isServiceRunning) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    val isPresent = notificationManager.activeNotifications.any { it.id == NOTIFICATION_ID }
-                    if (!isPresent) {
-                        showLockedNotification(lastDisplayInfo)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        val isPresent = notificationManager.activeNotifications?.any { it.id == NOTIFICATION_ID } ?: true
+                        if (!isPresent) {
+                            showLockedNotification(lastDisplayInfo)
+                        }
                     }
-                }
+                } catch (_: Throwable) {}
                 watchdogHandler.postDelayed(this, 1000)
             }
         }
@@ -129,14 +131,17 @@ class ProxyService : Service() {
 
     private fun showLockedNotification(content: String) {
         val notification = createNotification(content)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                // 1 shl 30 = FOREGROUND_SERVICE_TYPE_SPECIAL_USE (0x40000000)
+                startForeground(NOTIFICATION_ID, notification, 1 shl 30)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (_: Throwable) {
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (_: Throwable) {}
         }
     }
 

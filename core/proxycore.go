@@ -30,8 +30,8 @@ var (
 	logList []string
 
 	wibLocation = time.FixedZone("WIB", 7*3600)
-	daysIndo    = [...]string{"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
-	monthsIndo  = [...]string{
+	daysIndo    = []string{"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
+	monthsIndo  = []string{
 		"", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
 		"Juli", "Agustus", "September", "Oktober", "November", "Desember",
 	}
@@ -42,10 +42,11 @@ type frpLogBridge struct{}
 func (f *frpLogBridge) Write(p []byte) (n int, err error) {
 	line := strings.TrimSpace(string(p))
 	if line != "" {
-		// Bersihkan timestamp UTC bawaan FRP (e.g. "2026-10-05 22:14:17.574 ")
-		if len(line) >= 23 && line[4] == '-' && line[7] == '-' && line[10] == ' ' && line[13] == ':' {
-			if idx := strings.Index(line[20:], " "); idx != -1 {
-				line = strings.TrimSpace(line[20+idx:])
+		// Bersihkan timestamp UTC bawaan FRP jika ada (e.g. "2026-10-05 22:14:17.574 ...")
+		if len(line) >= 20 && strings.Contains(line[:11], "-") {
+			parts := strings.SplitN(line, " ", 3)
+			if len(parts) == 3 {
+				line = parts[2]
 			}
 		}
 		AddLog("[FRP] " + line)
@@ -60,10 +61,16 @@ func init() {
 
 func getWIBTimestamp() string {
 	now := time.Now().In(wibLocation)
-	dayName := daysIndo[now.Weekday()]
-	monthName := monthsIndo[now.Month()]
+	weekday := int(now.Weekday())
+	if weekday < 0 || weekday >= len(daysIndo) {
+		weekday = 0
+	}
+	month := int(now.Month())
+	if month < 0 || month >= len(monthsIndo) {
+		month = 0
+	}
 	return fmt.Sprintf("%s, %02d %s %04d - %02d:%02d:%02d WIB",
-		dayName, now.Day(), monthName, now.Year(),
+		daysIndo[weekday], now.Day(), monthsIndo[month], now.Year(),
 		now.Hour(), now.Minute(), now.Second(),
 	)
 }

@@ -16,11 +16,11 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.HorizontalScrollView
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.widget.NestedScrollView
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import java.net.NetworkInterface
@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvDebugLogs: TextView
     private lateinit var btnCopyLogs: TextView
     private lateinit var btnClearLogs: TextView
-    private lateinit var scrollDebugVertical: NestedScrollView
+    private lateinit var scrollDebugVertical: ScrollView
     private lateinit var scrollDebugHorizontal: HorizontalScrollView
 
     private var isUserTouchingLogs = false
@@ -79,69 +79,73 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        try {
+            setContentView(R.layout.activity_main)
 
-        initViews()
-        loadPreferences()
-        updateUIState()
-        refreshIP()
+            initViews()
+            loadPreferences()
+            updateUIState()
+            refreshIP()
 
-        btnToggle.setOnClickListener {
-            if (ProxyService.isServiceRunning) {
-                stopProxyService()
-            } else {
-                startProxyService()
-            }
-        }
-
-        btnBatteryOpt.setOnClickListener {
-            requestBatteryOptimizationExemption()
-        }
-
-        switchDebug.setOnCheckedChangeListener { _, isChecked ->
-            layoutDebugLogs.visibility = if (isChecked) android.view.View.VISIBLE else android.view.View.GONE
-        }
-
-        btnCopyLogs.setOnClickListener {
-            val logs = tvDebugLogs.text.toString()
-            if (logs.isNotEmpty()) {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                val clip = android.content.ClipData.newPlainText("Socks5 FRP Debug Logs", logs)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        btnClearLogs.setOnClickListener {
-            try {
-                proxycore.Proxycore.clearLogs()
-                lastLogText = ""
-                tvDebugLogs.text = "Logs cleared."
-                scrollDebugHorizontal.scrollTo(0, 0)
-                scrollDebugVertical.scrollTo(0, 0)
-            } catch (_: Exception) {}
-        }
-
-        // Cegah konflik sentuhan dengan root ScrollView dan cegah flicker saat scrolling
-        val logTouchListener = View.OnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    isUserTouchingLogs = true
-                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    isUserTouchingLogs = false
-                    v.parent?.requestDisallowInterceptTouchEvent(false)
+            btnToggle.setOnClickListener {
+                if (ProxyService.isServiceRunning) {
+                    stopProxyService()
+                } else {
+                    startProxyService()
                 }
             }
-            false
-        }
-        scrollDebugVertical.setOnTouchListener(logTouchListener)
-        scrollDebugHorizontal.setOnTouchListener(logTouchListener)
-        tvDebugLogs.setOnTouchListener(logTouchListener)
 
-        logHandler.post(logRunnable)
-        checkNotificationPermission()
+            btnBatteryOpt.setOnClickListener {
+                requestBatteryOptimizationExemption()
+            }
+
+            switchDebug.setOnCheckedChangeListener { _, isChecked ->
+                layoutDebugLogs.visibility = if (isChecked) View.VISIBLE else View.GONE
+            }
+
+            btnCopyLogs.setOnClickListener {
+                val logs = tvDebugLogs.text.toString()
+                if (logs.isNotEmpty()) {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("Socks5 FRP Debug Logs", logs)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            btnClearLogs.setOnClickListener {
+                try {
+                    proxycore.Proxycore.clearLogs()
+                    lastLogText = ""
+                    tvDebugLogs.text = "Logs cleared."
+                    scrollDebugHorizontal.scrollTo(0, 0)
+                    scrollDebugVertical.scrollTo(0, 0)
+                } catch (_: Exception) {}
+            }
+
+            // Cegah konflik sentuhan dengan root ScrollView dan cegah flicker saat scrolling
+            val logTouchListener = View.OnTouchListener { v, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                        isUserTouchingLogs = true
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        isUserTouchingLogs = false
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+                false
+            }
+            scrollDebugVertical.setOnTouchListener(logTouchListener)
+            scrollDebugHorizontal.setOnTouchListener(logTouchListener)
+
+            logHandler.post(logRunnable)
+            checkNotificationPermission()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            Toast.makeText(this, "Init warning: ${t.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onResume() {
@@ -155,12 +159,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= 33) {
+            val perm = "android.permission.POST_NOTIFICATIONS"
+            if (ContextCompat.checkSelfPermission(this, perm)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 androidx.core.app.ActivityCompat.requestPermissions(
                     this,
-                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    arrayOf(perm),
                     101
                 )
             }
