@@ -37,6 +37,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Socks5 Mobile Proxy with FRP Tunnel" />
         </service>
+
+        <receiver
+            android:name=".NotificationDismissReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

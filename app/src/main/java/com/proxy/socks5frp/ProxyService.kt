@@ -9,7 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import proxycore.Proxycore
@@ -18,6 +20,23 @@ class ProxyService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var lastDisplayInfo: String = "Proxy is running"
+
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private val watchdogRunnable = object : Runnable {
+        override fun run() {
+            if (isServiceRunning) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    val isPresent = notificationManager.activeNotifications.any { it.id == NOTIFICATION_ID }
+                    if (!isPresent) {
+                        showLockedNotification(lastDisplayInfo)
+                    }
+                }
+                watchdogHandler.postDelayed(this, 1000)
+            }
+        }
+    }
 
     companion object {
         const val CHANNEL_ID = "socks5_proxy_service_channel"
@@ -25,6 +44,7 @@ class ProxyService : Service() {
 
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_REPOST_NOTIFICATION = "ACTION_REPOST_NOTIFICATION"
 
         const val EXTRA_LOCAL_PORT = "EXTRA_LOCAL_PORT"
         const val EXTRA_SERVER_ADDR = "EXTRA_SERVER_ADDR"
@@ -55,6 +75,13 @@ class ProxyService : Service() {
             return START_NOT_STICKY
         }
 
+        if (action == ACTION_REPOST_NOTIFICATION) {
+            if (isServiceRunning) {
+                showLockedNotification(lastDisplayInfo)
+            }
+            return START_STICKY
+        }
+
         val prefs = getSharedPreferences("proxy_settings", Context.MODE_PRIVATE)
         val localPort = intent?.getIntExtra(EXTRA_LOCAL_PORT, -1).let {
             if (it == null || it <= 0) prefs.getString("local_port", "10808")?.toIntOrNull() ?: 10808 else it
@@ -78,17 +105,9 @@ class ProxyService : Service() {
             if (it.isNullOrEmpty()) prefs.getString("socks_pass", "") ?: "" else it
         }
 
-        val displayInfo = if (serverAddr.isNotEmpty()) "VPS: $serverAddr:$remotePort | Local: $localPort" else "Local Port: $localPort"
-        val notification = createNotification(displayInfo)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        lastDisplayInfo = if (serverAddr.isNotEmpty()) "VPS: $serverAddr:$remotePort | Local: $localPort" else "Local Port: $localPort"
+        showLockedNotification(lastDisplayInfo)
+        watchdogHandler.post(watchdogRunnable)
 
         // Jalankan SOCKS5 + FRP di Go Core
         Thread {
@@ -108,7 +127,21 @@ class ProxyService : Service() {
         return START_STICKY
     }
 
+    private fun showLockedNotification(content: String) {
+        val notification = createNotification(content)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
     private fun stopProxy() {
+        watchdogHandler.removeCallbacks(watchdogRunnable)
         Thread {
             Proxycore.stopServer()
         }.start()
@@ -177,19 +210,29 @@ class ProxyService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("🟢 SOCKS5 Proxy & FRP Tunnel Aktif")
+        val deleteIntent = Intent(this, NotificationDismissReceiver::class.java)
+        val deletePendingIntent = PendingIntent.getBroadcast(
+            this, 2, deleteIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🔒 SOCKS5 Proxy & FRP [TERKUNCI]")
             .setContentText(content)
-            .setSubText("Running in Background")
+            .setSubText("Proxy Aktif - Tidak Bisa Dihapus")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
+            .setDeleteIntent(deletePendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Proxy", stopPendingIntent)
             .build()
+
+        notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR
+        return notification
     }
 
     override fun onDestroy() {
