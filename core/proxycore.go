@@ -28,6 +28,13 @@ var (
 
 	logMu   sync.Mutex
 	logList []string
+
+	wibLocation = time.FixedZone("WIB", 7*3600)
+	daysIndo    = [...]string{"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
+	monthsIndo  = [...]string{
+		"", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+		"Juli", "Agustus", "September", "Oktober", "November", "Desember",
+	}
 )
 
 type frpLogBridge struct{}
@@ -35,6 +42,12 @@ type frpLogBridge struct{}
 func (f *frpLogBridge) Write(p []byte) (n int, err error) {
 	line := strings.TrimSpace(string(p))
 	if line != "" {
+		// Bersihkan timestamp UTC bawaan FRP (e.g. "2026-10-05 22:14:17.574 ")
+		if len(line) >= 23 && line[4] == '-' && line[7] == '-' && line[10] == ' ' && line[13] == ':' {
+			if idx := strings.Index(line[20:], " "); idx != -1 {
+				line = strings.TrimSpace(line[20+idx:])
+			}
+		}
 		AddLog("[FRP] " + line)
 	}
 	return len(p), nil
@@ -45,10 +58,20 @@ func init() {
 	frpLog.Logger = golibLog.New(golibLog.WithOutput(&frpLogBridge{}), golibLog.WithLevel(golibLog.InfoLevel))
 }
 
+func getWIBTimestamp() string {
+	now := time.Now().In(wibLocation)
+	dayName := daysIndo[now.Weekday()]
+	monthName := monthsIndo[now.Month()]
+	return fmt.Sprintf("%s, %02d %s %04d - %02d:%02d:%02d WIB",
+		dayName, now.Day(), monthName, now.Year(),
+		now.Hour(), now.Minute(), now.Second(),
+	)
+}
+
 func AddLog(msg string) {
 	logMu.Lock()
 	defer logMu.Unlock()
-	t := time.Now().Format("15:04:05")
+	t := getWIBTimestamp()
 	entry := fmt.Sprintf("[%s] %s", t, msg)
 	logList = append(logList, entry)
 	if len(logList) > 300 {
