@@ -338,6 +338,7 @@
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
                         android:orientation="horizontal">
 
                         <TextView
@@ -349,10 +350,21 @@
                             android:textSize="11sp" />
 
                         <TextView
+                            android:id="@+id/btnPauseLogs"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:padding="4dp"
+                            android:text="⏸️ [Pause]"
+                            android:textColor="#FBBF24"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
                             android:id="@+id/btnCopyLogs"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="8dp"
+                            android:layout_marginEnd="6dp"
                             android:padding="4dp"
                             android:text="📋 [Copy Logs]"
                             android:textColor="#38BDF8"
@@ -388,10 +400,8 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
-                                android:scrollHorizontally="true"
                                 android:text="Ready. Start proxy to see live logs..."
                                 android:textColor="#34D399"
-                                android:textIsSelectable="true"
                                 android:textSize="11sp" />
                         </HorizontalScrollView>
                     </ScrollView>

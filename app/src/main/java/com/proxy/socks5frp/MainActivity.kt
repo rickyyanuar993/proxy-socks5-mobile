@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.HorizontalScrollView
 import android.widget.ScrollView
@@ -44,31 +45,59 @@ class MainActivity : AppCompatActivity() {
     private lateinit var switchDebug: SwitchMaterial
     private lateinit var layoutDebugLogs: View
     private lateinit var tvDebugLogs: TextView
+    private lateinit var btnPauseLogs: TextView
     private lateinit var btnCopyLogs: TextView
     private lateinit var btnClearLogs: TextView
     private lateinit var scrollDebugVertical: ScrollView
     private lateinit var scrollDebugHorizontal: HorizontalScrollView
 
+    private var isLogsPaused = false
     private var isUserTouchingLogs = false
     private var lastLogText: String = ""
 
     private val logHandler = Handler(Looper.getMainLooper())
+    private val resetTouchRunnable = Runnable {
+        isUserTouchingLogs = false
+    }
+
     private val logRunnable = object : Runnable {
         override fun run() {
-            if (switchDebug.isChecked && !isUserTouchingLogs) {
+            if (switchDebug.isChecked && !isLogsPaused && !isUserTouchingLogs) {
                 try {
                     val logs = proxycore.Proxycore.getRecentLogs()
-                    if (logs != lastLogText) {
+                    if (logs.isNotEmpty() && logs != lastLogText) {
                         lastLogText = logs
+
                         val curX = scrollDebugHorizontal.scrollX
                         val curY = scrollDebugVertical.scrollY
+
+                        // Hitung apakah user berada di dekat bagian paling bawah (toleransi 80px)
+                        val childHeight = scrollDebugVertical.getChildAt(0)?.height ?: 0
+                        val isAtBottom = (childHeight <= scrollDebugVertical.height) ||
+                                ((childHeight - (scrollDebugVertical.height + curY)) <= 80)
+
                         tvDebugLogs.text = logs
 
-                        scrollDebugHorizontal.post {
+                        // Pertahankan posisi horizontal persis di tempatnya agar teks tetap diam
+                        if (curX > 0) {
                             scrollDebugHorizontal.scrollTo(curX, 0)
+                            scrollDebugHorizontal.post {
+                                scrollDebugHorizontal.scrollTo(curX, 0)
+                            }
                         }
-                        scrollDebugVertical.post {
+
+                        // Untuk posisi vertikal:
+                        // Jika sebelumnya user sedang di paling bawah, ikuti log terbaru ke bawah.
+                        // Jika user sedang scroll ke atas membaca log lama, pertahankan posisi vertikalnya.
+                        if (isAtBottom) {
+                            scrollDebugVertical.post {
+                                scrollDebugVertical.fullScroll(View.FOCUS_DOWN)
+                            }
+                        } else {
                             scrollDebugVertical.scrollTo(0, curY)
+                            scrollDebugVertical.post {
+                                scrollDebugVertical.scrollTo(0, curY)
+                            }
                         }
                     }
                 } catch (_: Exception) {}
@@ -103,6 +132,23 @@ class MainActivity : AppCompatActivity() {
                 layoutDebugLogs.visibility = if (isChecked) View.VISIBLE else View.GONE
             }
 
+            // Kunci fokus agar tidak merebut scroll atau menyebabkan lompatan ke (0,0)
+            scrollDebugVertical.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            scrollDebugHorizontal.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+
+            btnPauseLogs.setOnClickListener {
+                isLogsPaused = !isLogsPaused
+                if (isLogsPaused) {
+                    btnPauseLogs.text = "▶️ [Resume]"
+                    btnPauseLogs.setTextColor(Color.parseColor("#34D399"))
+                    Toast.makeText(this, "Logs PAUSED. Layar diam & bebas dibaca.", Toast.LENGTH_SHORT).show()
+                } else {
+                    btnPauseLogs.text = "⏸️ [Pause]"
+                    btnPauseLogs.setTextColor(Color.parseColor("#FBBF24"))
+                    Toast.makeText(this, "Logs RESUMED.", Toast.LENGTH_SHORT).show()
+                }
+            }
+
             btnCopyLogs.setOnClickListener {
                 val logs = tvDebugLogs.text.toString()
                 if (logs.isNotEmpty()) {
@@ -128,10 +174,13 @@ class MainActivity : AppCompatActivity() {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                         isUserTouchingLogs = true
+                        logHandler.removeCallbacks(resetTouchRunnable)
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        isUserTouchingLogs = false
+                        // Tunda 2.5 detik agar momentum fling selesai dan teks tetap diam saat dibaca
+                        logHandler.removeCallbacks(resetTouchRunnable)
+                        logHandler.postDelayed(resetTouchRunnable, 2500)
                         v.parent?.requestDisallowInterceptTouchEvent(false)
                     }
                 }
@@ -155,6 +204,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         logHandler.removeCallbacks(logRunnable)
+        logHandler.removeCallbacks(resetTouchRunnable)
         super.onDestroy()
     }
 
@@ -189,6 +239,7 @@ class MainActivity : AppCompatActivity() {
         switchDebug = findViewById(R.id.switchDebug)
         layoutDebugLogs = findViewById(R.id.layoutDebugLogs)
         tvDebugLogs = findViewById(R.id.tvDebugLogs)
+        btnPauseLogs = findViewById(R.id.btnPauseLogs)
         btnCopyLogs = findViewById(R.id.btnCopyLogs)
         btnClearLogs = findViewById(R.id.btnClearLogs)
         scrollDebugVertical = findViewById(R.id.scrollDebugVertical)
