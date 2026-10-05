@@ -59,13 +59,15 @@ func ClearLogs() {
 }
 
 type Server struct {
-	listenPort  int
-	username    string
-	password    string
-	running     int32
-	listener    net.Listener
-	udpListener net.PacketConn
-	udpSessions sync.Map // map[string]*udpSession
+	listenPort    int
+	publicHost    string
+	publicUDPPort int
+	username      string
+	password      string
+	running       int32
+	listener      net.Listener
+	udpListener   net.PacketConn
+	udpSessions   sync.Map // map[string]*udpSession
 }
 
 type udpSession struct {
@@ -300,14 +302,23 @@ func (s *Server) handleUDPAssociate(client net.Conn) {
 	}
 
 	reply := []byte{0x05, 0x00, 0x00}
-	bindIP := "0.0.0.0"
+	bindIP := s.publicHost
+	bindPort := s.publicUDPPort
+	if bindPort == 0 {
+		bindPort = s.listenPort
+	}
 
-	// Kembalikan IP server tempat klien terkoneksi (LocalAddr) agar klien bisa mengirim UDP ke IP yang benar
-	if tcpAddr, ok := client.LocalAddr().(*net.TCPAddr); ok {
-		ip := tcpAddr.IP
-		if !ip.IsUnspecified() {
-			bindIP = ip.String()
+	// Jika publicHost tidak di-set (mode lokal), fallback ke client.LocalAddr()
+	if bindIP == "" {
+		if tcpAddr, ok := client.LocalAddr().(*net.TCPAddr); ok {
+			ip := tcpAddr.IP
+			if !ip.IsUnspecified() && !ip.IsLoopback() {
+				bindIP = ip.String()
+			}
 		}
+	}
+	if bindIP == "" {
+		bindIP = "127.0.0.1"
 	}
 
 	parsedIP := net.ParseIP(bindIP)
@@ -318,13 +329,15 @@ func (s *Server) handleUDPAssociate(client net.Conn) {
 		reply = append(reply, 0x04)
 		reply = append(reply, parsedIP.To16()...)
 	} else {
-		reply = append(reply, 0x01, 0, 0, 0, 0)
+		reply = append(reply, 0x03, byte(len(bindIP)))
+		reply = append(reply, []byte(bindIP)...)
 	}
 
 	portBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(portBytes, uint16(s.listenPort))
+	binary.BigEndian.PutUint16(portBytes, uint16(bindPort))
 	reply = append(reply, portBytes...)
 
+	AddLog(fmt.Sprintf("UDP ASSOCIATE granted -> BND: %s:%d", bindIP, bindPort))
 	_, _ = client.Write(reply)
 
 	// RFC 1928: Keep TCP connection alive; when TCP closes, UDP association terminates
@@ -496,9 +509,11 @@ func StartServer(localPort int, serverAddr string, serverPort int, token string,
 
 	// 1. Inisialisasi Native High-Performance SOCKS5 Server
 	s := &Server{
-		listenPort: localPort,
-		username:   socksUser,
-		password:   socksPass,
+		listenPort:    localPort,
+		publicHost:    serverAddr,
+		publicUDPPort: remotePort,
+		username:      socksUser,
+		password:      socksPass,
 	}
 
 	if err := s.Start(); err != nil {
