@@ -29,9 +29,20 @@ jobs:
       - name: Set up Android NDK & Environment
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/* | sort -V | tail -n 1)
+          # Gomobile membutuhkan NDK LTS (versi 26 atau 27) yang mendukung API level minimum
+          if [ -d "$ANDROID_SDK_ROOT/ndk/26.3.11579264" ]; then
+            NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.3.11579264"
+          elif [ -d "$ANDROID_SDK_ROOT/ndk/27.2.12479018" ]; then
+            NDK_PATH="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          else
+            # Cari versi NDK 26.x atau 27.x yang tersedia
+            NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/2[67].* 2>/dev/null | tail -n 1)
+            if [ -z "$NDK_PATH" ]; then
+              NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/* | grep -v "29\." | tail -n 1)
+            fi
+          fi
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-          echo "Using Android NDK at: $NDK_PATH"
+          echo "Using Android NDK: $NDK_PATH"
 
       - name: Build Go Mobile AAR Library
         working-directory: core
@@ -40,7 +51,7 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
-          gomobile bind -v -target=android/arm64,android/arm,android/amd64 -o ../app/libs/proxycore.aar .
+          gomobile bind -v -target=android/arm64,android/arm,android/amd64 -androidapi 21 -o ../app/libs/proxycore.aar .
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
