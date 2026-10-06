@@ -132,6 +132,10 @@ class MainActivity : AppCompatActivity() {
 
             switchDebug.setOnCheckedChangeListener { _, isChecked ->
                 layoutDebugLogs.visibility = if (isChecked) View.VISIBLE else View.GONE
+                getSharedPreferences("proxy_settings", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("debug_mode", isChecked)
+                    .apply()
             }
 
             // Kunci fokus agar tidak merebut scroll atau menyebabkan lompatan ke (0,0)
@@ -204,6 +208,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateUIState()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        savePreferences()
     }
 
     override fun onDestroy() {
@@ -343,6 +352,7 @@ class MainActivity : AppCompatActivity() {
             putString("local_port", etLocalPort.text.toString())
             putString("socks_user", etSocksUser.text.toString())
             putString("socks_pass", etSocksPass.text.toString())
+            putBoolean("debug_mode", switchDebug.isChecked)
             apply()
         }
     }
@@ -356,5 +366,9 @@ class MainActivity : AppCompatActivity() {
         etLocalPort.setText(prefs.getString("local_port", "10808"))
         etSocksUser.setText(prefs.getString("socks_user", ""))
         etSocksPass.setText(prefs.getString("socks_pass", ""))
+
+        val isDebug = prefs.getBoolean("debug_mode", false)
+        switchDebug.isChecked = isDebug
+        layoutDebugLogs.visibility = if (isDebug) View.VISIBLE else View.GONE
     }
 }
